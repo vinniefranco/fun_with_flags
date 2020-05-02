@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.0.0 (Unreleased)
+
+* Drop support for Elixir 1.7 and 1.8. Elixir >= 1.9 is now required, along with Erlang/OTP >= 21.
+
 ## v1.5.1
 
 * Internal changes to not compile in the persistence adapter config. This has no effect on the functionality of the package, but now the Ecto or Redis adapter configurantion is not memoized anymore, and it can be changed with no need to recompile the package.
