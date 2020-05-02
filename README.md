@@ -485,7 +485,7 @@ In terms of performance, very synthetic benchmarks (where the DBs run on the sam
 
 ## Configuration
 
-The library can be configured in host applications through Mix and the `config.exs` file. This example shows some default values:
+The library can be configured in host applications through the [`Config`](https://hexdocs.pm/elixir/Config.html) module. This example shows some default values:
 
 ```elixir
 config :fun_with_flags, :cache,
