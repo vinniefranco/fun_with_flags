@@ -4,8 +4,13 @@ elixir:
   - 1.10
   - 1.9
 otp_release:
+  - 23.0
   - 22.3
   - 21.2 # 21.3 no longer available on Travis
+matrix:
+  exclude:
+    - elixir: 1.9
+      otp_release: 23.0
 services:
   - redis-server
   - postgresql
