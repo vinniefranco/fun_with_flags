@@ -14,11 +14,16 @@ defmodule FunWithFlags.Store.Persistent.Redis do
   @flags_set "fun_with_flags"
 
 
+  # Retrieve the configuration to connect to Redis, and package it as an argument
+  # to be passed to the start_link function.
+  #
   @impl true
   def worker_spec do
     conf = case Config.redis_config do
       uri when is_binary(uri) ->
         {uri, @conn_options}
+      {uri, opts} when is_binary(uri) and is_list(opts) ->
+        {uri, Keyword.merge(opts, @conn_options)}
       opts when is_list(opts) ->
         Keyword.merge(opts, @conn_options)
     end

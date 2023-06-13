@@ -1,4 +1,4 @@
-if Code.ensure_loaded?(Ecto) do
+if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
 defmodule FunWithFlags.Store.Persistent.Ecto.Record do
   @moduledoc false
@@ -8,7 +8,7 @@ defmodule FunWithFlags.Store.Persistent.Ecto.Record do
 
   @primary_key {:id, Config.ecto_primary_key_type(), autogenerate: true}
 
-  schema Config.ecto_table_name() do
+  schema Config.ecto_table_name_determined_at_compile_time() do
     field :flag_name, :string
     field :gate_type, :string
     field :target, :string

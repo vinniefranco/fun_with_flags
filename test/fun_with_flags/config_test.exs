@@ -2,6 +2,12 @@ defmodule FunWithFlags.ConfigTest do
   use FunWithFlags.TestCase, async: true
   alias FunWithFlags.Config
 
+  import FunWithFlags.TestUtils, only: [
+    configure_redis_with: 1,
+    ensure_default_redis_config_in_app_env: 0,
+    reset_app_env_to_default_redis_config: 0,
+  ]
+
   # Test all of these in the same test case because Mix provides
   # no API to clear or reset the App configuration. Since the test
   # order is randomized, testing these cases separately makes them
@@ -13,7 +19,7 @@ defmodule FunWithFlags.ConfigTest do
   #
   test "the redis configuration" do
     # without configuration, it returns the defaults
-    ensure_no_redis_config()
+    ensure_default_redis_config_in_app_env()
     defaults = [host: "localhost", port: 6379, database: 5]
     assert ^defaults = Config.redis_config
 
@@ -21,6 +27,17 @@ defmodule FunWithFlags.ConfigTest do
     url = "redis:://localhost:1234/1"
     configure_redis_with(url)
     assert ^url = Config.redis_config
+
+    # when configured to use a URL + Redis config tuple, it returns the tuple and ignores the defaults
+    url = "redis:://localhost:1234/1"
+    configure_redis_with({url, socket_opts: [:inet6]})
+    {^url, opts} = Config.redis_config
+    assert [socket_opts: [:inet6]] == opts
+
+    # when configured to use sentinel, it returns sentinel without default host and port
+    sentinel = [sentinel: [sentinels: ["redis:://locahost:1234/1"], group: "primary"], database: 5]
+    configure_redis_with(sentinel)
+    assert ^sentinel = Config.redis_config
 
     # when configured with keywords, it merges them with the default
     configure_redis_with(database: 42, port: 2000)
@@ -35,7 +52,7 @@ defmodule FunWithFlags.ConfigTest do
     System.delete_env("123_TEST_REDIS_URL")
 
     # cleanup
-    configure_redis_with(defaults)
+    reset_app_env_to_default_redis_config()
   end
 
 
@@ -116,18 +133,9 @@ defmodule FunWithFlags.ConfigTest do
     end
   end
 
-  describe "ecto_table_name()" do
+  describe "ecto_table_name_determined_at_compile_time()" do
     test "it defaults to \"fun_with_flags_toggles\"" do
-      assert Config.ecto_table_name() == "fun_with_flags_toggles"
-    end
-
-    test "it can be configured" do
-      persistence_config = Application.get_env(:fun_with_flags,  :persistence, [])
-      Application.put_env(:fun_with_flags, :persistence, [ecto_table_name: "my_custom_table"])
-
-      assert Config.ecto_table_name() == "my_custom_table"
-
-      Application.put_env(:fun_with_flags, :persistence, persistence_config)
+      assert Config.ecto_table_name_determined_at_compile_time() == "fun_with_flags_toggles"
     end
   end
 
@@ -199,15 +207,6 @@ defmodule FunWithFlags.ConfigTest do
       reset_notifications_defaults(original_adapter, original_client)
       assert Config.change_notifications_enabled?
     end
-  end
-
-  defp configure_redis_with(conf) do
-    Application.put_all_env(fun_with_flags: [redis: conf])
-    assert ^conf = Application.get_env(:fun_with_flags, :redis)
-  end
-
-  defp ensure_no_redis_config do
-    assert match?([database: 5], Application.get_env(:fun_with_flags, :redis))
   end
 
   defp reset_cache_defaults do

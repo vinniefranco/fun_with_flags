@@ -3,7 +3,7 @@
 [![Mix Tests](https://github.com/tompave/fun_with_flags/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/tompave/fun_with_flags/actions/workflows/test.yml?query=branch%3Amaster)
 [![Code Quality](https://github.com/tompave/fun_with_flags/actions/workflows/quality.yml/badge.svg?branch=master)](https://github.com/tompave/fun_with_flags/actions/workflows/quality.yml?query=branch%3Amaster)  
 [![Hex.pm](https://img.shields.io/hexpm/v/fun_with_flags.svg)](https://hex.pm/packages/fun_with_flags)
-[![hexdocs.pm](https://img.shields.io/badge/docs-1.8.1-brightgreen.svg)](https://hexdocs.pm/fun_with_flags/1.8.1/FunWithFlags.html)
+[![hexdocs.pm](https://img.shields.io/badge/docs-1.10.1-brightgreen.svg)](https://hexdocs.pm/fun_with_flags/1.10.1/FunWithFlags.html)
 [![Hex.pm Downloads](https://img.shields.io/hexpm/dt/fun_with_flags)](https://hex.pm/packages/fun_with_flags)
 [![License](https://img.shields.io/hexpm/l/fun_with_flags.svg)](https://github.com/tompave/fun_with_flags/blob/master/LICENSE.txt)
 [![ElixirWeekly](https://img.shields.io/badge/featured-ElixirWeekly-8e5ab5.svg)](https://elixirweekly.net/issues/43)
@@ -37,6 +37,7 @@ It stores flag information in Redis or a relational DB (PostgreSQL or MySQL, wit
 * [Installation](#installation)
 * [Configuration](#configuration)
   - [Persistence Adapters](#persistence-adapters)
+    - [Ecto Multi-tenancy](#ecto-multi-tenancy)
   - [PubSub Adapters](#pubsub-adapters)
 * [Extensibility](#extensibility)
   - [Custom Persistence Adapters](#custom-persistence-adapters)
@@ -494,7 +495,7 @@ In order to have a small installation footprint, the dependencies for the differ
 ```elixir
 def deps do
   [
-    {:fun_with_flags, "~> 1.8.1"},
+    {:fun_with_flags, "~> 1.10.1"},
 
     # either:
     {:redix, "~> 0.9"},
@@ -548,8 +549,22 @@ config :fun_with_flags, :redis,
 # a URL string can be used instead
 config :fun_with_flags, :redis, "redis://localhost:6379/0"
 
+# or a {URL, [opts]} tuple
+config :fun_with_flags, :redis, {"redis://localhost:6379/0", socket_opts: [:inet6]}
+
 # a {:system, name} tuple can be used to read from the environment
 config :fun_with_flags, :redis, {:system, "REDIS_URL"}
+```
+
+[Redis Sentinel](https://redis.io/docs/manual/sentinel/) is also supported. See the [Redix docs](https://github.com/whatyouhide/redix/tree/v1.1.5#redis-sentinel) for more details.
+
+```elixir
+config :fun_with_flags, :redis,
+  sentinel: [
+    sentinels: ["redis:://locahost:1234/1"],
+    group: "primary",
+  ],
+  database: 5
 ```
 
 ### Persistence Adapters
@@ -565,7 +580,6 @@ Only PostgreSQL (via [`postgrex`](https://hex.pm/packages/postgrex)) and MySQL (
 To configure the Ecto adapter:
 
 ```elixir
-
 # Normal Phoenix and Ecto configuration.
 # The repo can either use the Postgres or MySQL adapter.
 config :my_app, ecto_repos: [MyApp.Repo]
@@ -585,6 +599,36 @@ config :fun_with_flags, :persistence,
 ```
 
 It's also necessary to create the DB table that will hold the feature flag data. To do that, [create a new migration](https://hexdocs.pm/ecto_sql/Mix.Tasks.Ecto.Gen.Migration.html) in your project and copy the contents of [the provided migration file](https://github.com/tompave/fun_with_flags/blob/master/priv/ecto_repo/migrations/00000000000000_create_feature_flags_table.exs). Then [run the migration](https://hexdocs.pm/ecto_sql/Mix.Tasks.Ecto.Migrate.html).
+
+When using the Ecto persistence adapter, FunWithFlags will annotate all queries using the [Ecto Repo Query API](https://hexdocs.pm/ecto/3.8.4/Ecto.Repo.html#query-api) with a custom option: `[fun_with_flags: true]`. This is done to make it easier to identify FunWithFlags queries when working with Ecto customization hooks, e.g. the [`Ecto.Repo.prepare_query/3` callback](https://hexdocs.pm/ecto/3.8.4/Ecto.Repo.html#c:prepare_query/3). Since this sort of annotations via custom query options are only useful with the Ecto Query API ([context](https://elixirforum.com/t/proposal-prepare-query-for-write-operations/50510)), other repo functions are not annotated with the custom option.
+
+#### Ecto Multi-tenancy
+
+If you followed the Ecto guide on setting up [multi-tenancy with foreign keys](https://hexdocs.pm/ecto/3.8.4/multi-tenancy-with-foreign-keys.html), you must add an exception for queries originating from FunWithFlags. As mentioned in the section above, these queries have a custom query option named `:fun_with_flags` set to `true`:
+
+```elixir
+# Sample code, only relevant if you followed the Ecto guide on multi tenancy with foreign keys.
+defmodule MyApp.Repo do
+  use Ecto.Repo, otp_app: :my_app
+
+  require Ecto.Query
+
+  @impl true
+  def prepare_query(_operation, query, opts) do
+    cond do
+      # add the check for opts[:fun_with_flags] here:
+      opts[:skip_org_id] || opts[:schema_migration] || opts[:fun_with_flags] ->
+        {query, opts}
+
+      org_id = opts[:org_id] ->
+        {Ecto.Query.where(query, org_id: ^org_id), opts}
+
+      true ->
+        raise "expected org_id or skip_org_id to be set"
+    end
+  end
+end
+```
 
 ### PubSub Adapters
 
@@ -689,6 +733,22 @@ Then it's necessary to configure the Mix project to not start the `:fun_with_fla
 ```diff
 - {:fun_with_flags, "~> 1.6"},
 + {:fun_with_flags, "~> 1.6", runtime: false},
+```
+
+If you use releases then you'll also need to modify the `releases` section in `mix.exs` so that it loads the `fun_with_flags` application explicitly (since `runtime: false` / `app: false` will exclude it from the assembled release).
+
+```diff
+def project do
+  [
+    app: :my_phoenix_app,
++   releases: [
++     my_phoenix_app: [
++       applications: [
++         fun_with_flags: :load
++       ]
++    ]
+  ]
+end
 ```
 
 * **Option B**: Declare that the `:fun_with_flags` application is managed directly by your host application ([docs](https://hexdocs.pm/mix/1.11.3/Mix.Tasks.Compile.App.html)).

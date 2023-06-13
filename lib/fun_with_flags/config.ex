@@ -1,4 +1,6 @@
 defmodule FunWithFlags.Config do
+  require Application
+
   @moduledoc false
   @default_redis_config [
     host: "localhost",
@@ -27,15 +29,19 @@ defmodule FunWithFlags.Config do
     case Application.get_env(:fun_with_flags, :redis, []) do
       uri  when is_binary(uri) ->
         uri
+      {uri, opts} when is_binary(uri) and is_list(opts) ->
+        {uri, opts}
       opts when is_list(opts) ->
-        Keyword.merge(@default_redis_config, opts)
+        if Keyword.has_key?(opts, :sentinel) do
+          @default_redis_config
+          |> Keyword.take([:database])
+          |> Keyword.merge(opts)
+        else
+          Keyword.merge(@default_redis_config, opts)
+        end
       {:system, var} when is_binary(var) ->
         System.get_env(var)
     end
-  end
-
-  def ecto_table_name do
-    Keyword.get(persistence_config(), :ecto_table_name)
   end
 
 
@@ -64,7 +70,6 @@ defmodule FunWithFlags.Config do
   # Used to determine the store module at compile time, which is stored in a
   # module attribute. `Application.compile_env` cannot be used in functions,
   # so here we are.
-  require Application
   @compile_time_cache_config Application.compile_env(:fun_with_flags, :cache, [])
 
   # If we're not using the cache, then don't bother with
@@ -81,6 +86,19 @@ defmodule FunWithFlags.Config do
     else
       FunWithFlags.SimpleStore
     end
+  end
+
+
+  # Used to determine the Ecto table name at compile time.
+  @compile_time_persistence_config Application.compile_env(:fun_with_flags, :persistence, [])
+
+
+  def ecto_table_name_determined_at_compile_time do
+    pers_conf = Keyword.merge(
+      @default_persistence_config,
+      @compile_time_persistence_config
+    )
+    Keyword.get(pers_conf, :ecto_table_name)
   end
 
 

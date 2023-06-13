@@ -9,23 +9,27 @@ on:
 jobs:
   build:
     name: Elixir ${{ matrix.elixir }} with OTP ${{ matrix.otp }}
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     strategy:
       fail-fast: false
       matrix:
         elixir:
+          - '1.14'
           - '1.13'
           - '1.12'
-          - '1.11'
         otp:
-          - '24.2'
-          - '24.1'
+          - '25.1'
+          - '25.0'
+          - '24.3'
           - '23.3'
-          - '22.3'
-        # exclude:
-        #   - elixir: '1.10'
-        #     otp: '24.1'
+        exclude:
+          - elixir: '1.14'
+            otp: '23.3'
+          - elixir: '1.12'
+            otp: '25.1'
+          - elixir: '1.12'
+            otp: '25.0'
 
     services:
       postgres:
@@ -54,16 +58,16 @@ jobs:
           done
 
       - name: Set up Elixir and OTP
-        uses: erlef/setup-elixir@v1
+        uses: erlef/setup-beam@v1
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
 
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: 'Restore cache for deps/ and _build/ directories'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             deps
